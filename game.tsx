@@ -36,8 +36,8 @@ export default function KampalaKrane() {
       x: 100,
       y: 200,
       velocity: 0,
-      width: 40,
-      height: 40,
+      width: 50,
+      height: 50,
     },
     obstacles: [] as Array<{
       x: number
@@ -46,6 +46,20 @@ export default function KampalaKrane() {
       sparkOffset: number
     }>,
   })
+
+  // Dynamically resize the canvas to cover the entire viewport.
+  useEffect(() => {
+    const resizeCanvas = () => {
+      if (canvasRef.current) {
+        canvasRef.current.width = window.innerWidth
+        canvasRef.current.height = window.innerHeight
+      }
+    }
+
+    resizeCanvas()
+    window.addEventListener("resize", resizeCanvas)
+    return () => window.removeEventListener("resize", resizeCanvas)
+  }, [])
 
   // Preload crane images
   useEffect(() => {
@@ -56,7 +70,7 @@ export default function KampalaKrane() {
     })
   }, [])
 
-  // Game loop
+  // Game loop with progressive difficulty
   useEffect(() => {
     if (!canvasRef.current || gameState !== "playing") return
 
@@ -64,6 +78,7 @@ export default function KampalaKrane() {
     const ctx = canvasRef.current.getContext("2d")
     if (!ctx) return
 
+    // Preload crane images for the animation
     const craneImages = CRANE_FRAMES.map((src) => {
       const img = new Image()
       img.src = src
@@ -71,10 +86,7 @@ export default function KampalaKrane() {
       return img
     })
 
-    const buildingImg = new Image()
-    buildingImg.src = "/placeholder.svg?height=400&width=70"
-
-    // Create background images
+    // Preload background images
     const backgroundImg = new Image()
     backgroundImg.src = "/background.jpg"
 
@@ -87,7 +99,7 @@ export default function KampalaKrane() {
     const gameLoop = () => {
       const { crane, obstacles } = gameObjectsRef.current
 
-      // Update crane position
+      // Update crane physics
       crane.velocity += GRAVITY
       crane.y += crane.velocity
 
@@ -98,27 +110,28 @@ export default function KampalaKrane() {
         currentFrameRef.current = (currentFrameRef.current + 1) % CRANE_FRAMES.length
       }
 
+      // Compute dynamic difficulty parameters based on score:
+      const dynamicSpeed = OBSTACLE_SPEED - score * 0.1 // Faster obstacles as score increases
+      const dynamicGap = Math.max(OBSTACLE_GAP - score * 5, 200) // Gap decreases, but not below 200
+      const dynamicSpacing = Math.max(OBSTACLE_SPACING - score * 5, 200) // Spacing decreases, but not below 200
+
       // Update obstacles
       obstacles.forEach((obstacle) => {
-        obstacle.x += OBSTACLE_SPEED
+        obstacle.x += dynamicSpeed
         obstacle.sparkOffset += 0.2
       })
 
-      // Add new obstacles
-      if (
-        obstacles.length === 0 ||
-        obstacles[obstacles.length - 1].x < canvasRef.current!.width - OBSTACLE_SPACING
-      ) {
+      // Add new obstacles based on dynamic spacing
+      if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < canvasRef.current!.width - dynamicSpacing) {
         obstacles.push({
           x: canvasRef.current!.width,
-          topHeight:
-            Math.random() * (canvasRef.current!.height - OBSTACLE_GAP - 100) + 50,
+          topHeight: Math.random() * (canvasRef.current!.height - dynamicGap - 100) + 50,
           passed: false,
           sparkOffset: 0,
         })
       }
 
-      // Remove off-screen obstacles
+      // Remove obstacles that have gone off-screen
       if (obstacles[0]?.x < -OBSTACLE_WIDTH) {
         obstacles.shift()
       }
@@ -126,10 +139,10 @@ export default function KampalaKrane() {
       // Check collisions and scoring
       obstacles.forEach((obstacle) => {
         if (
-          crane.x + crane.width * 0.7 > obstacle.x && // Adjusted hitbox
-          crane.x + crane.width * 0.3 < obstacle.x + OBSTACLE_WIDTH && // Adjusted hitbox
-          (crane.y + crane.height * 0.3 < obstacle.topHeight || // Adjusted hitbox
-            crane.y + crane.height * 0.7 > obstacle.topHeight + OBSTACLE_GAP) // Adjusted hitbox
+          crane.x + crane.width * 0.7 > obstacle.x &&
+          crane.x + crane.width * 0.3 < obstacle.x + OBSTACLE_WIDTH &&
+          (crane.y + crane.height * 0.3 < obstacle.topHeight ||
+            crane.y + crane.height * 0.7 > obstacle.topHeight + dynamicGap)
         ) {
           setGameState("gameOver")
         }
@@ -140,101 +153,45 @@ export default function KampalaKrane() {
         }
       })
 
-      // Check boundaries
-      if (
-        crane.y > canvasRef.current!.height - crane.height ||
-        crane.y < 0
-      ) {
+      // Check for boundaries
+      if (crane.y > canvasRef.current!.height - crane.height || crane.y < 0) {
         setGameState("gameOver")
       }
 
       // Clear canvas
-      ctx.clearRect(
-        0,
-        0,
-        canvasRef.current!.width,
-        canvasRef.current!.height
-      )
+      ctx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
 
       // Draw background based on score:
       // <10: background.jpg, 10-29: mbarara.jpg, >=30: jijnja.jpg
       if (score < 10) {
         if (backgroundImg.complete) {
-          ctx.drawImage(
-            backgroundImg,
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.drawImage(backgroundImg, 0, 0, canvasRef.current!.width, canvasRef.current!.height)
         } else {
-          const gradient = ctx.createLinearGradient(
-            0,
-            0,
-            0,
-            canvasRef.current!.height
-          )
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvasRef.current!.height)
           gradient.addColorStop(0, "#1c3f80")
           gradient.addColorStop(1, "#f08c4a")
           ctx.fillStyle = gradient
-          ctx.fillRect(
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.fillRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
         }
       } else if (score < 30) {
         if (mbararaImg.complete) {
-          ctx.drawImage(
-            mbararaImg,
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.drawImage(mbararaImg, 0, 0, canvasRef.current!.width, canvasRef.current!.height)
         } else {
-          const gradient = ctx.createLinearGradient(
-            0,
-            0,
-            0,
-            canvasRef.current!.height
-          )
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvasRef.current!.height)
           gradient.addColorStop(0, "#1c3f80")
           gradient.addColorStop(1, "#f08c4a")
           ctx.fillStyle = gradient
-          ctx.fillRect(
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.fillRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
         }
       } else {
         if (jijnjaImg.complete) {
-          ctx.drawImage(
-            jijnjaImg,
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.drawImage(jijnjaImg, 0, 0, canvasRef.current!.width, canvasRef.current!.height)
         } else {
-          const gradient = ctx.createLinearGradient(
-            0,
-            0,
-            0,
-            canvasRef.current!.height
-          )
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvasRef.current!.height)
           gradient.addColorStop(0, "#1c3f80")
           gradient.addColorStop(1, "#f08c4a")
           ctx.fillStyle = gradient
-          ctx.fillRect(
-            0,
-            0,
-            canvasRef.current!.width,
-            canvasRef.current!.height
-          )
+          ctx.fillRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
         }
       }
 
@@ -253,7 +210,7 @@ export default function KampalaKrane() {
           controlPoint2X,
           obstacle.topHeight * 0.7,
           obstacle.x,
-          obstacle.topHeight
+          obstacle.topHeight,
         )
         ctx.stroke()
 
@@ -263,8 +220,7 @@ export default function KampalaKrane() {
           const t = i / (numSparks - 1)
           const sparkY = obstacle.topHeight * t
           const curveX = obstacle.x + Math.sin(t * Math.PI) * 20
-          const sparkOffset =
-            ((obstacle.sparkOffset + i * 0.2) % 1) * obstacle.topHeight
+          const sparkOffset = ((obstacle.sparkOffset + i * 0.2) % 1) * obstacle.topHeight
           const finalSparkY = (sparkY + sparkOffset) % obstacle.topHeight
 
           ctx.strokeStyle = "#f0f0f0"
@@ -272,36 +228,23 @@ export default function KampalaKrane() {
           ctx.beginPath()
           ctx.moveTo(curveX - 10, finalSparkY)
           for (let j = 1; j <= 10; j++) {
-            ctx.lineTo(
-              curveX - 10 + j * 2,
-              finalSparkY + (Math.random() - 0.5) * 10
-            )
+            ctx.lineTo(curveX - 10 + j * 2, finalSparkY + (Math.random() - 0.5) * 10)
           }
           ctx.stroke()
         }
 
-        // Draw bottom chimney
+        // Draw bottom chimney using dynamic gap
         const chimneyWidth = OBSTACLE_WIDTH * 20
         const chimneyX = obstacle.x - OBSTACLE_WIDTH * 8
-        const chimneyY = obstacle.topHeight + OBSTACLE_GAP
-        
+        const chimneyY = obstacle.topHeight + dynamicGap
+
         // Draw main chimney body
         ctx.fillStyle = "#8B4513" // Brown color for chimney
-        ctx.fillRect(
-          chimneyX,
-          chimneyY,
-          chimneyWidth,
-          canvasRef.current!.height - chimneyY
-        )
-        
+        ctx.fillRect(chimneyX, chimneyY, chimneyWidth, canvasRef.current!.height - chimneyY)
+
         // Draw chimney top detail
         ctx.fillStyle = "#654321" // Darker brown for top detail
-        ctx.fillRect(
-          chimneyX - 5,
-          chimneyY,
-          chimneyWidth + 10,
-          20
-        )
+        ctx.fillRect(chimneyX - 5, chimneyY, chimneyWidth + 10, 20)
       })
 
       // Draw animated crane sprite
@@ -309,25 +252,23 @@ export default function KampalaKrane() {
       if (currentFrame.complete) {
         ctx.save()
         const rotation = Math.atan2(crane.velocity * 0.5, 15)
-        ctx.translate(
-          crane.x + crane.width / 2,
-          crane.y + crane.height / 2
-        )
+        ctx.translate(crane.x + crane.width / 2, crane.y + crane.height / 2)
         ctx.rotate(rotation)
-        ctx.drawImage(
-          currentFrame,
-          -crane.width / 2,
-          -crane.height / 2,
-          crane.width,
-          crane.height
-        )
+        ctx.drawImage(currentFrame, -crane.width / 2, -crane.height / 2, crane.width, crane.height)
         ctx.restore()
       }
 
-      // Draw score
+      // Draw score background
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
+      ctx.fillRect(10, 10, 200, 40)
+      ctx.strokeStyle = "#FFF"
+      ctx.lineWidth = 2
+      ctx.strokeRect(10, 10, 200, 40)
+
+      // Draw score text
       ctx.fillStyle = "#FFF"
-      ctx.font = "24px 'Press Start 2P', system-ui"
-      ctx.fillText(`Score: ${score}`, 20, 40)
+      ctx.font = "24px 'Press Start 2P', monospace"
+      ctx.fillText(`SCORE:${score.toString().padStart(5, "0")}`, 20, 40)
 
       animationFrameId = requestAnimationFrame(gameLoop)
     }
@@ -335,6 +276,18 @@ export default function KampalaKrane() {
     animationFrameId = requestAnimationFrame(gameLoop)
     return () => cancelAnimationFrame(animationFrameId)
   }, [gameState, score])
+
+  useEffect(() => {
+    const loadFont = async () => {
+      const font = new FontFace(
+        "Press Start 2P",
+        "url(https://fonts.gstatic.com/s/pressstart2p/v14/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff2)",
+      )
+      await font.load()
+      document.fonts.add(font)
+    }
+    loadFont()
+  }, [])
 
   const handleClick = () => {
     if (gameState === "gameOver") {
@@ -360,33 +313,39 @@ export default function KampalaKrane() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4">
       <div className="relative">
-        <canvas
-          ref={canvasRef}
-          width={800}
-          height={600}
-          className="rounded-lg border-4 border-gray-700"
-          onClick={handleClick}
-        />
+        <canvas ref={canvasRef} className="rounded-lg border-4 border-gray-700" onClick={handleClick} />
         {gameState !== "playing" && (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-            <h1 className="mb-4 text-4xl font-bold text-white">
-              {gameState === "ready" ? "Kampala Krane" : "Game Over!"}
-            </h1>
-            <Button
-              onClick={handleClick}
-              className="bg-yellow-500 px-8 py-4 text-lg font-bold text-white hover:bg-yellow-600"
-            >
-              {gameState === "ready" ? "Start Game" : "Play Again 🐦"}
-            </Button>
-            {gameState === "gameOver" && (
-              <p className="mt-4 text-2xl text-white">Score: {score}</p>
+            {gameState === "gameOver" ? (
+              <>
+                <img
+                  src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/gameover-removebg-preview-gQxYCnJf9hu3d7RJdGmm6LxoRvU2JX.png"
+                  alt="Game Over"
+                  className="mb-8 h-32 w-auto"
+                />
+                <div className="mb-8 rounded bg-black/50 p-4 backdrop-blur">
+                  <p className="mb-4 font-['Press_Start_2P'] text-xl text-yellow-400">FINAL SCORE</p>
+                  <p className="font-['Press_Start_2P'] text-3xl text-white">{score.toString().padStart(5, "0")}</p>
+                </div>
+              </>
+            ) : (
+              <h1 className="mb-8 font-['Press_Start_2P'] text-4xl text-yellow-400 [text-shadow:4px_4px_0_#ff1744]">
+                KAMPALA KRANE
+              </h1>
             )}
+            <div className="rounded bg-black/50 p-2 backdrop-blur">
+              <Button
+                onClick={handleClick}
+                className="font-['Press_Start_2P'] bg-yellow-400 px-8 py-4 text-lg text-black hover:bg-yellow-500"
+              >
+                {gameState === "ready" ? "START GAME" : "PLAY AGAIN"}
+              </Button>
+            </div>
           </div>
         )}
       </div>
-      <p className="mt-4 text-gray-400">
-        Click or tap to make the crane fly!
-      </p>
+      <p className="mt-4 font-['Press_Start_2P'] text-sm text-yellow-400">CLICK OR TAP TO FLY!</p>
     </div>
   )
 }
+
